@@ -1,2 +1,3 @@
 commit	val_bpb	memory_gb	status	description
 4b68bf4	5.800000	0.3	keep	baseline: 4 layers, 256 dim, 2 heads, training loss 5.60
+22c1877	0.000000	0.0	discard	5 layers too slow (500+ tokens/sec vs 2000+ for baseline)
