@@ -49,10 +49,9 @@ EVAL_TOKENS = 40 * 524288  # number of tokens for val eval
 CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "autoresearch")
 DATA_DIR = os.path.join(CACHE_DIR, "data")
 TOKENIZER_DIR = os.path.join(CACHE_DIR, "tokenizer")
-BASE_URL = "https://huggingface.co/datasets/karpathy/climbmix-400b-shuffle/resolve/main"
-MAX_SHARD = 6542 # the last datashard is shard_06542.parquet
-VAL_SHARD = MAX_SHARD  # pinned validation shard (shard_06542)
-VAL_FILENAME = f"shard_{VAL_SHARD:05d}.parquet"
+BASE_URL = "https://huggingface.co/datasets/merve/folk-mythology-tales/resolve/main"
+DATA_FILE = "merged_clean.txt"
+VAL_SPLIT_RATIO = 0.1  # 10% of data for validation
 VOCAB_SIZE = 8192
 
 # BPE split pattern (GPT-4 style, with \p{N}{1,2} instead of {1,3})
@@ -65,17 +64,18 @@ BOS_TOKEN = "<|reserved_0|>"
 # Data download
 # ---------------------------------------------------------------------------
 
-def download_single_shard(index):
-    """Download one parquet shard with retries. Returns True on success."""
-    filename = f"shard_{index:05d}.parquet"
-    filepath = os.path.join(DATA_DIR, filename)
+def download_data_file():
+    """Download the single text file dataset."""
+    filepath = os.path.join(DATA_DIR, DATA_FILE)
     if os.path.exists(filepath):
+        print(f"Data: {DATA_FILE} already downloaded at {DATA_DIR}")
         return True
 
-    url = f"{BASE_URL}/{filename}"
+    url = f"{BASE_URL}/{DATA_FILE}"
     max_attempts = 5
     for attempt in range(1, max_attempts + 1):
         try:
+            print(f"Data: downloading {DATA_FILE} (attempt {attempt}/{max_attempts})...")
             response = requests.get(url, stream=True, timeout=30)
             response.raise_for_status()
             temp_path = filepath + ".tmp"
@@ -84,10 +84,10 @@ def download_single_shard(index):
                     if chunk:
                         f.write(chunk)
             os.rename(temp_path, filepath)
-            print(f"  Downloaded {filename}")
+            print(f"Data: successfully downloaded {DATA_FILE}")
             return True
         except (requests.RequestException, IOError) as e:
-            print(f"  Attempt {attempt}/{max_attempts} failed for {filename}: {e}")
+            print(f"  Attempt {attempt}/{max_attempts} failed: {e}")
             for path in [filepath + ".tmp", filepath]:
                 if os.path.exists(path):
                     try:
@@ -99,54 +99,70 @@ def download_single_shard(index):
     return False
 
 
-def download_data(num_shards, download_workers=8):
-    """Download training shards + pinned validation shard."""
+def download_data(num_shards=None, download_workers=None):
+    """Download the single text file dataset (ignores num_shards and download_workers)."""
     os.makedirs(DATA_DIR, exist_ok=True)
-    num_train = min(num_shards, MAX_SHARD)
-    ids = list(range(num_train))
-    if VAL_SHARD not in ids:
-        ids.append(VAL_SHARD)
-
-    # Count what's already downloaded
-    existing = sum(1 for i in ids if os.path.exists(os.path.join(DATA_DIR, f"shard_{i:05d}.parquet")))
-    if existing == len(ids):
-        print(f"Data: all {len(ids)} shards already downloaded at {DATA_DIR}")
-        return
-
-    needed = len(ids) - existing
-    print(f"Data: downloading {needed} shards ({existing} already exist)...")
-
-    workers = max(1, min(download_workers, needed))
-    with Pool(processes=workers) as pool:
-        results = pool.map(download_single_shard, ids)
-
-    ok = sum(1 for r in results if r)
-    print(f"Data: {ok}/{len(ids)} shards ready at {DATA_DIR}")
+    return download_data_file()
 
 # ---------------------------------------------------------------------------
 # Tokenizer training
 # ---------------------------------------------------------------------------
 
-def list_parquet_files():
-    """Return sorted list of parquet file paths in the data directory."""
-    files = sorted(f for f in os.listdir(DATA_DIR) if f.endswith(".parquet") and not f.endswith(".tmp"))
-    return [os.path.join(DATA_DIR, f) for f in files]
+def split_train_val():
+    """Split the text file into training and validation sets."""
+    filepath = os.path.join(DATA_DIR, DATA_FILE)
+    if not os.path.exists(filepath):
+        print(f"Error: {DATA_FILE} not found. Run download first.")
+        return None, None
+
+    train_file = os.path.join(DATA_DIR, "train.txt")
+    val_file = os.path.join(DATA_DIR, "val.txt")
+
+    # Check if split files already exist
+    if os.path.exists(train_file) and os.path.exists(val_file):
+        print(f"Data: train/val split already exists")
+        return train_file, val_file
+
+    print(f"Data: creating train/val split...")
+    with open(filepath, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    # Split into train and validation
+    val_size = int(len(lines) * VAL_SPLIT_RATIO)
+    train_lines = lines[val_size:]
+    val_lines = lines[:val_size]
+
+    # Write split files
+    with open(train_file, 'w', encoding='utf-8') as f:
+        f.writelines(train_lines)
+    with open(val_file, 'w', encoding='utf-8') as f:
+        f.writelines(val_lines)
+
+    print(f"Data: created train.txt ({len(train_lines)} lines) and val.txt ({len(val_lines)} lines)")
+    return train_file, val_file
 
 
 def text_iterator(max_chars=1_000_000_000, doc_cap=10_000):
-    """Yield documents from training split (all shards except pinned val shard)."""
-    parquet_paths = [p for p in list_parquet_files() if not p.endswith(VAL_FILENAME)]
+    """Yield documents from training split."""
+    train_file, _ = split_train_val()
+    if train_file is None:
+        return
+
     nchars = 0
-    for filepath in parquet_paths:
-        pf = pq.ParquetFile(filepath)
-        for rg_idx in range(pf.num_row_groups):
-            rg = pf.read_row_group(rg_idx)
-            for text in rg.column("text").to_pylist():
-                doc = text[:doc_cap] if len(text) > doc_cap else text
-                nchars += len(doc)
-                yield doc
-                if nchars >= max_chars:
-                    return
+    with open(train_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            # Skip empty lines
+            line = line.strip()
+            if not line:
+                continue
+
+            # Cap document length
+            doc = line[:doc_cap] if len(line) > doc_cap else line
+            nchars += len(doc)
+            yield doc
+
+            if nchars >= max_chars:
+                return
 
 
 def train_tokenizer():
@@ -160,9 +176,10 @@ def train_tokenizer():
 
     os.makedirs(TOKENIZER_DIR, exist_ok=True)
 
-    parquet_files = list_parquet_files()
-    if len(parquet_files) < 2:
-        print("Tokenizer: need at least 2 data shards (1 train + 1 val). Download more data first.")
+    # Check if data is available
+    train_file, val_file = split_train_val()
+    if train_file is None or val_file is None:
+        print("Tokenizer: need training data. Run download first.")
         sys.exit(1)
 
     # --- Train with rustbpe ---
@@ -263,23 +280,25 @@ def get_token_bytes(device="cpu"):
 
 
 def _document_batches(split, tokenizer_batch_size=128):
-    """Infinite iterator over document batches from parquet files."""
-    parquet_paths = list_parquet_files()
-    assert len(parquet_paths) > 0, "No parquet files found. Run prepare.py first."
-    val_path = os.path.join(DATA_DIR, VAL_FILENAME)
-    if split == "train":
-        parquet_paths = [p for p in parquet_paths if p != val_path]
-    else:
-        parquet_paths = [val_path]
+    """Infinite iterator over document batches from text files."""
+    train_file, val_file = split_train_val()
+    if train_file is None or val_file is None:
+        raise RuntimeError("No data files found. Run prepare.py first.")
+
+    data_file = val_file if split == "val" else train_file
     epoch = 1
     while True:
-        for filepath in parquet_paths:
-            pf = pq.ParquetFile(filepath)
-            for rg_idx in range(pf.num_row_groups):
-                rg = pf.read_row_group(rg_idx)
-                batch = rg.column('text').to_pylist()
-                for i in range(0, len(batch), tokenizer_batch_size):
-                    yield batch[i:i+tokenizer_batch_size], epoch
+        with open(data_file, 'r', encoding='utf-8') as f:
+            batch = []
+            for line in f:
+                line = line.strip()
+                if line:  # Skip empty lines
+                    batch.append(line)
+                    if len(batch) >= tokenizer_batch_size:
+                        yield batch, epoch
+                        batch = []
+            if batch:  # Yield remaining documents
+                yield batch, epoch
         epoch += 1
 
 
@@ -384,17 +403,15 @@ def evaluate_bpb(model, tokenizer, batch_size):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prepare data and tokenizer for autoresearch")
-    parser.add_argument("--num-shards", type=int, default=10, help="Number of training shards to download (-1 = all). Val shard is always pinned.")
-    parser.add_argument("--download-workers", type=int, default=8, help="Number of parallel download workers")
+    parser.add_argument("--num-shards", type=int, default=None, help="Ignored (dataset has single file). Kept for compatibility.")
+    parser.add_argument("--download-workers", type=int, default=None, help="Ignored (single file download). Kept for compatibility.")
     args = parser.parse_args()
-
-    num_shards = MAX_SHARD if args.num_shards == -1 else args.num_shards
 
     print(f"Cache directory: {CACHE_DIR}")
     print()
 
-    # Step 1: Download data
-    download_data(num_shards, download_workers=args.download_workers)
+    # Step 1: Download data (single file dataset)
+    download_data()
     print()
 
     # Step 2: Train tokenizer
