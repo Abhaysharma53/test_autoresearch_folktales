@@ -4,3 +4,4 @@ commit	val_bpb	memory_gb	status	description
 ee78c58	5.400000	0.3	keep	4 layers + embedding_lr=0.8, training loss 5.23 (7% improvement)
 b51be8a	5.600000	0.3	discard	4 layers + embedding_lr=0.8 + matrix_lr=0.05, training loss 5.45 (worse than exp3)
 620c544	5.000000	0.3	keep	4 layers + embedding_lr=0.8 + warmup=0.1, training loss 4.86 (16.8% improvement!)
+9352285	5.500000	0.3	discard	4 layers + embedding_lr=0.8 + warmup=0.15, training loss 5.37 (worse than exp5)
