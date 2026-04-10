@@ -498,7 +498,7 @@ FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
 DEPTH = 6               # number of transformer layers (increased from 4)
-DEVICE_BATCH_SIZE = 12  # per-device batch size (reduced to fit larger model)
+DEVICE_BATCH_SIZE = 32  # per-device batch size (65536 / (32*2048) = 1 grad accum step)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
