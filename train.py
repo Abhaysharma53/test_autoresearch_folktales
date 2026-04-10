@@ -497,8 +497,8 @@ WARMDOWN_RATIO = 0.5    # fraction of time budget for LR warmdown
 FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
-DEPTH = 6               # number of transformer layers (increased from 4)
-DEVICE_BATCH_SIZE = 32  # per-device batch size (65536 / (32*2048) = 1 grad accum step)
+DEPTH = 5               # number of transformer layers (increased from 4 to 5)
+DEVICE_BATCH_SIZE = 16  # per-device batch size (back to baseline, 65536 / (16*2048) = 2 grad accum steps)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
