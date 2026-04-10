@@ -1,1 +1,2 @@
 commit	val_bpb	memory_gb	status	description
+4b68bf4	5.800000	0.3	keep	baseline: 4 layers, 256 dim, 2 heads, training loss 5.60
