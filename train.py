@@ -486,7 +486,7 @@ WINDOW_PATTERN = "L"    # sliding window pattern: L=full, S=half context
 
 # Optimization
 TOTAL_BATCH_SIZE = 2**16 # ~65K tokens per optimizer step
-EMBEDDING_LR = 0.6      # learning rate for token embeddings (Adam)
+EMBEDDING_LR = 0.8      # learning rate for token embeddings (Adam) - increased from 0.6
 UNEMBEDDING_LR = 0.004  # learning rate for lm_head (Adam)
 MATRIX_LR = 0.04        # learning rate for matrix parameters (Muon)
 SCALAR_LR = 0.5         # learning rate for per-layer scalars (Adam)
@@ -497,8 +497,8 @@ WARMDOWN_RATIO = 0.5    # fraction of time budget for LR warmdown
 FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
-DEPTH = 5               # number of transformer layers (increased from 4 to 5)
-DEVICE_BATCH_SIZE = 16  # per-device batch size (back to baseline, 65536 / (16*2048) = 2 grad accum steps)
+DEPTH = 4               # number of transformer layers (back to baseline)
+DEVICE_BATCH_SIZE = 16  # per-device batch size (baseline)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
