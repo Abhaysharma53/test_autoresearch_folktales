@@ -8,3 +8,4 @@ b51be8a	5.600000	0.3	discard	4 layers + embedding_lr=0.8 + matrix_lr=0.05, train
 f3e67f2	4.900000	0.3	keep	4 layers + embedding_lr=0.9 + warmup=0.1, training loss 4.97 (18.1% improvement! NEW RECORD!)
 58e765c	4.850000	0.3	keep	4 layers + embedding_lr=1.0 + warmup=0.1, training loss 4.86 (18.3% improvement! NEW RECORD!)
 7d96b5a	5.400000	0.3	discard	4 layers + embedding_lr=1.0 + warmup=0.1 + warmdown=0.4, training loss 5.26 (worse than exp8)
+0d89aeb	4.800000	0.3	keep	4 layers + embedding_lr=1.1 + warmup=0.1, training loss 4.81 (19.3% improvement! NEW RECORD!)
