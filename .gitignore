@@ -18,3 +18,9 @@ AGENTS.md
 
 # Experimental code/artifacts
 dev/
+
+# Model checkpoints (large binaries)
+*.pt
+
+# macOS metadata
+.DS_Store
