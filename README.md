@@ -62,7 +62,7 @@ If the above commands all work, your setup is ready. You can now run the agent i
 Spin up Claude Code (or any coding agent) in this repo, then prompt:
 
 ```
-Have a look at program.md and let's kick off a new experiment!
+Hi have a look at program.md and let's kick off a new experiment! let's do the setup first.
 ```
 
 The `program.md` file is a lightweight "skill" that tells the agent how to run experiments, record results, and iterate.
