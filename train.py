@@ -7,6 +7,8 @@ Usage: uv run train.py
 import os
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 
 import gc
 import time
@@ -16,6 +18,8 @@ import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch._dynamo
+torch._dynamo.config.disable = True
 
 # def verify_macos_env():
 #     if sys.platform != "darwin":
@@ -411,14 +415,14 @@ class MuonAdamW(torch.optim.Optimizer):
         self._muon_wd_t = torch.tensor(0.0, dtype=torch.float32, device="cpu")
         self._muon_beta2_t = torch.tensor(0.0, dtype=torch.float32, device="cpu")
         
-        # Compile conditionally
-        compiler_kwargs = {"dynamic": False, "fullgraph": True}
-        if device_type in ("cuda", "cpu"):
-            self.adamw_step_fused = torch.compile(adamw_step_fused, **compiler_kwargs)
-            self.muon_step_fused = torch.compile(muon_step_fused, **compiler_kwargs)
-        else:
-            self.adamw_step_fused = adamw_step_fused
-            self.muon_step_fused = muon_step_fused
+        # # Compile conditionally
+        # compiler_kwargs = {"dynamic": False, "fullgraph": True}
+        # if device_type in ("cuda", "cpu"):
+        #     self.adamw_step_fused = torch.compile(adamw_step_fused, **compiler_kwargs)
+        #     self.muon_step_fused = torch.compile(muon_step_fused, **compiler_kwargs)
+        # else:
+        self.adamw_step_fused = adamw_step_fused
+        self.muon_step_fused = muon_step_fused
 
     def _step_adamw(self, group):
         for p in group['params']:
@@ -569,8 +573,8 @@ optimizer = model.setup_optimizer(
 )
 
 # torch.compile is unstable on MPS, only use on CUDA
-if device_type == "cuda":
-    model = torch.compile(model, dynamic=False)
+# if device_type == "cuda":
+#     model = torch.compile(model, dynamic=False)
 
 train_loader = make_dataloader(tokenizer, DEVICE_BATCH_SIZE, MAX_SEQ_LEN, "train")
 x, y, epoch = next(train_loader)  # prefetch first batch
