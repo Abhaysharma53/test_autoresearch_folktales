@@ -17,15 +17,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def verify_macos_env():
-    if sys.platform != "darwin":
-        raise RuntimeError(f"This script requires macOS with Metal. Detected platform: {sys.platform}")
-    if not torch.backends.mps.is_available():
-        raise RuntimeError("MPS (Metal Performance Shaders) is not available. Ensure you are running on Apple Silicon with a compatible PyTorch build.")
-    print("Environment verified: macOS detected with Metal (MPS) hardware acceleration available.")
-    print()
+# def verify_macos_env():
+#     if sys.platform != "darwin":
+#         raise RuntimeError(f"This script requires macOS with Metal. Detected platform: {sys.platform}")
+#     if not torch.backends.mps.is_available():
+#         raise RuntimeError("MPS (Metal Performance Shaders) is not available. Ensure you are running on Apple Silicon with a compatible PyTorch build.")
+#     print("Environment verified: macOS detected with Metal (MPS) hardware acceleration available.")
+#     print()
 
-verify_macos_env()
+# verify_macos_env()
 
 from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
 
@@ -481,11 +481,11 @@ class MuonAdamW(torch.optim.Optimizer):
 
 # Model architecture
 ASPECT_RATIO = 64       # model_dim = depth * ASPECT_RATIO
-HEAD_DIM = 128          # target head dimension for attention
+HEAD_DIM = 64          # target head dimension for attention
 WINDOW_PATTERN = "L"    # sliding window pattern: L=full, S=half context
 
 # Optimization
-TOTAL_BATCH_SIZE = 2**16 # ~65K tokens per optimizer step
+TOTAL_BATCH_SIZE = 2**12 # ~65K tokens per optimizer step
 EMBEDDING_LR = 1.1      # learning rate for token embeddings (Adam) - increased from 1.0
 UNEMBEDDING_LR = 0.004  # learning rate for lm_head (Adam)
 MATRIX_LR = 0.04        # learning rate for matrix parameters (Muon) - back to baseline
@@ -498,7 +498,7 @@ FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
 DEPTH = 4               # number of transformer layers (back to baseline)
-DEVICE_BATCH_SIZE = 16  # per-device batch size (baseline)
+DEVICE_BATCH_SIZE = 8  # per-device batch size (baseline)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader

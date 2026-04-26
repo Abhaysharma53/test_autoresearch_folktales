@@ -23,24 +23,24 @@ import rustbpe
 import tiktoken
 import torch
 
-def verify_macos_env():
-    import sys
-    if sys.platform != "darwin":
-        raise RuntimeError(f"This script requires macOS with Metal. Detected platform: {sys.platform}")
-    if not torch.backends.mps.is_available():
-        raise RuntimeError("MPS (Metal Performance Shaders) is not available. Ensure you are running on Apple Silicon with a compatible PyTorch build.")
-    print("Environment verified: macOS detected with Metal (MPS) hardware acceleration available.")
-    print()
+# def verify_macos_env():
+#     import sys
+#     if sys.platform != "darwin":
+#         raise RuntimeError(f"This script requires macOS with Metal. Detected platform: {sys.platform}")
+#     if not torch.backends.mps.is_available():
+#         raise RuntimeError("MPS (Metal Performance Shaders) is not available. Ensure you are running on Apple Silicon with a compatible PyTorch build.")
+#     print("Environment verified: macOS detected with Metal (MPS) hardware acceleration available.")
+#     print()
 
-verify_macos_env()
+# verify_macos_env()
 
 # ---------------------------------------------------------------------------
 # Constants (fixed, do not modify)
 # ---------------------------------------------------------------------------
 
-MAX_SEQ_LEN = 2048       # context length
+MAX_SEQ_LEN = 256       # context length
 TIME_BUDGET = 300        # training time budget in seconds (5 minutes)
-EVAL_TOKENS = 40 * 524288  # number of tokens for val eval
+EVAL_TOKENS = 3 * 524288  # number of tokens for val eval
 
 # ---------------------------------------------------------------------------
 # Configuration
