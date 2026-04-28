@@ -5,12 +5,13 @@ Usage: uv run train.py
 """
 
 import os
-os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 
 import gc
+import math
 import time
 from dataclasses import dataclass, asdict
 
@@ -32,6 +33,14 @@ torch._dynamo.config.disable = True
 # verify_macos_env()
 
 from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
+
+
+def get_cuda_dtype():
+    # GTX 1650 class GPUs do not support BF16 tensor cores.
+    if not torch.cuda.is_available():
+        return None
+    major, _ = torch.cuda.get_device_capability()
+    return torch.bfloat16 if major >= 8 else torch.float16
 
 # ---------------------------------------------------------------------------
 # GPT Model
@@ -489,20 +498,20 @@ HEAD_DIM = 64          # target head dimension for attention
 WINDOW_PATTERN = "L"    # sliding window pattern: L=full, S=half context
 
 # Optimization
-TOTAL_BATCH_SIZE = 2**12 # ~65K tokens per optimizer step
-EMBEDDING_LR = 1.1      # learning rate for token embeddings (Adam) - increased from 1.0
+TOTAL_BATCH_SIZE = 2**10 # smaller effective batch for 4GB VRAM
+EMBEDDING_LR = 0.8      # safer default for fp16 stability on GTX 1650
 UNEMBEDDING_LR = 0.004  # learning rate for lm_head (Adam)
-MATRIX_LR = 0.04        # learning rate for matrix parameters (Muon) - back to baseline
+MATRIX_LR = 0.025        # learning rate for matrix parameters (Muon)
 SCALAR_LR = 0.5         # learning rate for per-layer scalars (Adam)
-WEIGHT_DECAY = 0.15     # cautious weight decay for Muon (reduced from 0.2)
-ADAM_BETAS = (0.8, 0.95) # Adam beta1, beta2 (back to optimal)
-WARMUP_RATIO = 0.1      # fraction of time budget for LR warmup (back to optimal 0.1)
-WARMDOWN_RATIO = 0.5    # fraction of time budget for LR warmdown (back to optimal)
+WEIGHT_DECAY = 0.15     # cautious weight decay for Muon
+ADAM_BETAS = (0.8, 0.95) # Adam beta1, beta2
+WARMUP_RATIO = 0.1      # fraction of time budget for LR warmup
+WARMDOWN_RATIO = 0.5    # fraction of time budget for LR warmdown
 FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
-DEPTH = 4               # number of transformer layers (back to baseline)
-DEVICE_BATCH_SIZE = 8  # per-device batch size (baseline)
+DEPTH = 2               # reduced depth for GTX 1650
+DEVICE_BATCH_SIZE = 4   # per-device batch size for 4GB VRAM
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
@@ -520,7 +529,11 @@ device = torch.device(device_type)
 
 # Autocast context
 if device_type == "cuda":
-    autocast_ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+    cuda_dtype = get_cuda_dtype()
+    autocast_ctx = torch.amp.autocast(device_type="cuda", dtype=cuda_dtype)
+    print(f"CUDA device: {torch.cuda.get_device_name(0)}")
+    print(f"CUDA compute capability: {torch.cuda.get_device_capability(0)}")
+    print(f"AMP dtype: {cuda_dtype}")
 elif device_type == "cpu":
     autocast_ctx = torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16)
 else:
@@ -581,6 +594,7 @@ x, y, epoch = next(train_loader)  # prefetch first batch
 
 print(f"Time budget: {TIME_BUDGET}s")
 print(f"Gradient accumulation steps: {grad_accum_steps}")
+print(f"Device: {device_type}")
 
 # Schedules (all based on progress = training_time / TIME_BUDGET)
 
@@ -621,10 +635,19 @@ while True:
     for micro_step in range(grad_accum_steps):
         with autocast_ctx:
             loss = model(x, y)
+        if not torch.isfinite(loss):
+            print("\nFAIL: non-finite loss encountered")
+            sys.exit(1)
         train_loss = loss.detach()
         loss = loss / grad_accum_steps
         loss.backward()
         x, y, epoch = next(train_loader)
+
+    # Guard fp16 runs against gradient blowups that lead to NaNs mid-training.
+    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    if not torch.isfinite(grad_norm):
+        print("\nFAIL: non-finite gradient norm encountered")
+        sys.exit(1)
 
     # Progress and schedules
     progress = min(total_training_time / TIME_BUDGET, 1.0)
@@ -641,10 +664,10 @@ while True:
 
     train_loss_f = train_loss.item()
 
-    # Fast fail: abort if loss is exploding
-    if train_loss_f > 100:
-        print("FAIL")
-        exit(1)
+    # Fast fail: abort if loss is exploding.
+    if (not math.isfinite(train_loss_f)) or train_loss_f > 100:
+        print("FAIL: unstable training loss")
+        sys.exit(1)
 
     sync_device(device_type)
     t1 = time.time()

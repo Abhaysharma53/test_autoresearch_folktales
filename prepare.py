@@ -18,7 +18,6 @@ import pickle
 from multiprocessing import Pool
 
 import requests
-import pyarrow.parquet as pq
 import rustbpe
 import tiktoken
 import torch

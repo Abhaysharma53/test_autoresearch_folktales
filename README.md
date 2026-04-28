@@ -33,9 +33,6 @@ The repo has three files that matter:
 
 The metric is **val_bpb** (validation bits per byte) — lower is better, and vocab-size-independent so architectural changes are fairly compared. Each experiment runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation).
 
-## Quick start
-
-**Requirements:** Apple Silicon Mac (M1/M2/M3/M4 with Metal/MPS support), Python 3.10+, [uv](https://docs.astral.sh/uv/), and an AI coding agent such as [Claude Code](https://claude.ai/code) or [Mistral Vibe](https://mistral.ai).
 
 ```bash
 # 1. Clone this repo
