@@ -1,12 +1,6 @@
 # autoresearch_folktales
 
-> An adaptation of [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch) for training a small LLM on folktales dataset, running on Apple Silicon Mac.
-
----
-
-**Watch the full walkthrough on YouTube:** [https://www.youtube.com/watch?v=XXR0zZ0_16M](https://www.youtube.com/watch?v=XXR0zZ0_16M)
-
----
+> An adaptation of [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch) for training a small LLM on a folktales dataset, configured for Windows + NVIDIA GTX 1650.
 
 ## About the original project
 
@@ -19,7 +13,7 @@
 This repo adapts autoresearch to:
 
 1. **Train on a small story dataset** — [folk-mythology-tales](https://huggingface.co/datasets/merve/folk-mythology-tales) dataset from Hugging Face, instead of the original dataset that Karpathy used (which is much larger).
-2. **Run on Apple Silicon Mac** — adds MPS (Metal Performance Shaders) support so you can run autonomous LLM research experiments directly on an M1/M2/M3/M4 MacBook or Mac, without needing an NVIDIA GPU.
+2. **Run on Windows + CUDA GPU** — tested with Conda environment `folktales` on NVIDIA GeForce GTX 1650 using fp16 autocast and small VRAM-safe defaults.
 
 The core autoresearch loop is preserved: the AI agent iteratively modifies `train.py`, runs 5-minute training experiments, and tracks `val_bpb` (validation bits per byte) to find the best hyperparameters.
 
@@ -27,29 +21,26 @@ The core autoresearch loop is preserved: the AI agent iteratively modifies `trai
 
 The repo has three files that matter:
 
-- **`prepare.py`** — fixed constants, one-time data prep (downloads the folklore training data, trains a BPE tokenizer), and runtime utilities (dataloader, evaluation). Not modified by the agent.
+- **`prepare.py`** — one-time data prep (downloads training data, trains tokenizer) plus runtime utilities (dataloader, evaluation).
 - **`train.py`** — the single file the agent edits. Contains the full GPT model, optimizer (Muon + AdamW), and training loop. Everything is fair game: architecture, hyperparameters, optimizer, batch size, etc.
 - **`program.md`** — baseline instructions for the agent. Point your agent here and let it go.
 
 The metric is **val_bpb** (validation bits per byte) — lower is better, and vocab-size-independent so architectural changes are fairly compared. Each experiment runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation).
 
 
-```bash
+```powershell
 # 1. Clone this repo
-git clone https://github.com/thu-vu92/autoresearch_folktales.git
-cd autoresearch_folktales
+git clone https://github.com/Abhaysharma53/test_autoresearch_folktales.git
+cd test_autoresearch_folktales
 
-# 2. Install uv project manager (if you don't already have it)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# 2. Activate conda env
+conda activate folktales
 
-# 3. Install dependencies
-uv sync
+# 3. Download data and train tokenizer (one-time)
+python prepare.py
 
-# 4. Download folklore data and train tokenizer (one-time, ~2 min)
-uv run prepare.py
-
-# 5. Run a single training experiment manually (~5 min)
-uv run train.py
+# 4. Run a single training experiment (~5 min)
+python train.py
 ```
 
 If the above commands all work, your setup is ready. You can now run the agent in autonomous research mode.
@@ -64,7 +55,22 @@ Hi have a look at program.md and let's kick off a new experiment! let's do the s
 
 The `program.md` file is a lightweight "skill" that tells the agent how to run experiments, record results, and iterate.
 
-> **Note on Apple Silicon performance:** MPS is significantly slower than a modern NVIDIA GPU for this workload — expect ~85–90 optimizer steps in 5 minutes vs. 1000s on a fast GPU. This means hyperparameter improvements found by the agent are real but may require more steps to fully manifest. The agent still runs and iterates correctly; results are just compute-limited at this scale.
+> **Current setup note:** this repo currently targets Windows + GTX 1650. The training loop includes fp16 stability guards and smaller defaults to avoid mid-run NaN crashes on 4GB-class GPUs.
+
+## Why `agent_loop.py` is used
+
+`agent_loop.py` is the automation runner used in this repo to execute the experiment campaign end-to-end without manual intervention.
+
+- **What it does:** runs a fixed sequence of experiments, launches `python train.py`, streams progress to terminal, parses final metrics from `run.log`, and appends structured rows to `results.tsv`.
+- **Why we use it:** avoids repetitive manual run/parse/log steps and enforces a strict stop condition (exactly 6 experiments in this setup).
+- **How it handles interruptions:** supports resume behavior by checking how many rows already exist in `results.tsv` and continuing from the next pending experiment.
+- **How it decides status:** marks each run as `keep`, `discard`, or `crash` based on metric validity and best-so-far comparison.
+
+Run it with:
+
+```powershell
+python agent_loop.py
+```
 
 ## Project structure
 
@@ -72,6 +78,7 @@ The `program.md` file is a lightweight "skill" that tells the agent how to run e
 prepare.py      — constants, data prep + runtime utilities (do not modify)
 train.py        — model, optimizer, training loop (agent modifies this)
 program.md      — agent instructions
+agent_loop.py   — deterministic multi-experiment runner + results logging
 pyproject.toml  — dependencies
 ```
 
@@ -81,17 +88,13 @@ This project uses the [merve/folk-mythology-tales](https://huggingface.co/datase
 
 ## Design choices
 
-- **Single file to modify.** The agent only touches `train.py`. This keeps the scope manageable and diffs reviewable.
+- **Single primary file to modify.** Most experiments touch `train.py`, while `prepare.py` and `program.md` may be updated for environment compatibility and process clarity.
 - **Fixed time budget.** Training always runs for exactly 5 minutes of wall clock time, making experiments directly comparable regardless of what the agent changes (model size, batch size, architecture, etc.).
-- **Apple Silicon support.** FlashAttention-3 dependency is removed; falls back to PyTorch's native SDPA with manual sliding window causal masking. `torch.compile` paths unsupported on MPS are disabled. Optimizer states are precisely cast for Metal compatibility.
+- **Windows CUDA stability.** GTX 1650-compatible fp16 autocast, conservative defaults, and non-finite loss/gradient guards help keep long runs stable.
 - **Self-contained.** No external dependencies beyond PyTorch and a few small packages. No distributed training, no complex configs.
 
 ## Credits
 
 - Original [autoresearch](https://github.com/karpathy/autoresearch) by [Andrej Karpathy](https://github.com/karpathy)
-- macOS/MPS adaptation by [miolini/autoresearch-macos](https://github.com/miolini/autoresearch-macos)
 - Folklore dataset: [merve/folk-mythology-tales](https://huggingface.co/datasets/merve/folk-mythology-tales)
 
-## License
-
-MIT
